@@ -27,7 +27,7 @@ services:
         value: android_pairing_enrollment_secret_key_32_chars
 
       - key: DEFAULT_UPI_ID
-        value: 8102167310@paytm
+        value: 8102167310@sbi
 
       - key: DEFAULT_PAYEE_NAME
         value: RailTurbo VIP

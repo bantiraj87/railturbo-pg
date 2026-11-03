@@ -44,7 +44,7 @@ const accountRepo = new ReceivingAccountRepository(db);
 const defaultMerchantId = '00000000-0000-0000-0000-000000000001';
 const businessName = process.env.DEFAULT_MERCHANT_NAME || 'RailTurbo Tatkal Autofill';
 const webhookUrl = process.env.DEFAULT_WEBHOOK_URL || 'https://railturbo-vip.vercel.app/api/paytm-webhook';
-const upiId = process.env.DEFAULT_UPI_ID || '8102167310@paytm';
+const upiId = process.env.DEFAULT_UPI_ID || '8102167310@sbi';
 const payeeName = process.env.DEFAULT_PAYEE_NAME || 'RailTurbo VIP';
 
 const merchant = merchantRepo.findById(defaultMerchantId);
