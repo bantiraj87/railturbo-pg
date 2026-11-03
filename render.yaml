@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: railturbo-pg
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node scripts/render-gateway.js
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+
+      - key: NODE_ENV
+        value: production
+
+      - key: YOUPI_BIND_HOST
+        value: 0.0.0.0
+
+      - key: USE_SQLITE_FALLBACK
+        value: "true"
+
+      - key: ADMIN_API_TOKEN
+        value: fb45bfdb81ba70f17634e918bb5d7b531c3073773fa12787eaadf8e3b541ab7c
+
+      - key: ANDROID_ENROLLMENT_SECRET
+        value: android_pairing_enrollment_secret_key_32_chars
+
+      - key: DEFAULT_UPI_ID
+        value: 8102167310@paytm
+
+      - key: DEFAULT_PAYEE_NAME
+        value: RailTurbo VIP
+
+      - key: DEFAULT_MERCHANT_NAME
+        value: RailTurbo Tatkal Autofill
+
+      - key: DEFAULT_WEBHOOK_URL
+        value: https://railturbo-vip.vercel.app/api/paytm-webhook

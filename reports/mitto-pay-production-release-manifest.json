@@ -1,0 +1,41 @@
+{
+  "product": "Mitto Pay",
+  "deploymentStage": "RESTRICTED_PRODUCTION_PILOT",
+  "generatedAt": "2026-10-21T14:59:00.000Z",
+  "commitSha": "9e4763c66c82c8ba246f00b6fa3347428be7be38",
+  "branch": "mitto-pay-main",
+  "artifact": {
+    "filename": "mitto-pay-rc1.tar.gz",
+    "sha256": "c6b9fdd76dfa8962ca4ae2cd7082ff951d41a7de4836209ed7559fbcbecc39f2",
+    "sizeBytes": 2607895
+  },
+  "host": {
+    "vmIp": "130.210.28.51",
+    "serviceName": "youpi-staging.service",
+    "nodeVersion": "22.23.3",
+    "activeDeployedCommit": "9e4763c66c82c8ba246f00b6fa3347428be7be38",
+    "backups": [
+      "/opt/youpi-pg-backup-pre-gate4",
+      "/opt/youpi-pg-backup-pre-mitto-canary"
+    ]
+  },
+  "pilotBoundaries": {
+    "authorizedMerchantUid": "VVANFTTKRA",
+    "authorizedAgencyId": "cmrnlpf9z0001ju04htfqb9my",
+    "canaryMode": "FAIL_CLOSED",
+    "verificationPolicy": "REQUIRE_DUAL_CHANNEL",
+    "vvisaEnableYoupiUpi": false,
+    "vvisaDefaultGateway": "ZOHO"
+  },
+  "testEvidence": {
+    "unauthorizedMerchantHttpCode": 403,
+    "authorizedMerchantHttpCode": 201,
+    "activeCanaryPaymentId": "8d5adfdd-56f7-4646-875f-7b104ac62620",
+    "checkoutStateRoute": "https://pay.vvisa.in/checkout/8d5adfdd-56f7-4646-875f-7b104ac62620",
+    "apiHealthRoute": "https://pay-api.vvisa.in/api/v1/health"
+  },
+  "blockersAndNotes": {
+    "zohoBooksScope": "Zoho CRM refresh token lacks Books scopes (returns HTTP 401 code 57); books outbox gracefully catches and routes to MANUAL_REVIEW_REQUIRED without crashing financial ledger.",
+    "realPaymentRequirement": "Operator approval required for real-money test transaction amount."
+  }
+}

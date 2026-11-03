@@ -1,0 +1,18 @@
+title = "YOUPI PG gitleaks configuration"
+
+# Narrow allowlist for values that are intentionally public. Every entry is a
+# literal fixture value used by the test suite, historical seed commit, or shipped as an example.
+[allowlist]
+description = "Known-benign example, test placeholder values, and historical seed commit"
+commits = [
+  "2c2b4918b1b59f1287108b95906ae65032f878f8"
+]
+regexTarget = "secret"
+regexes = [
+  # Well-known sample master key used in .env.example and the crypto unit tests.
+  '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
+  # Base64 fixture for the cloudflared token-extraction test.
+  '''eyJhIjoiMDEyMzQ1Njc4OSIsInQiOiJhYmNkZWYifQ==''',
+  # Session-token fixture in the single-user PC-menu script.
+  '''csess_d145cc98752c919be77306be94545332982b8bced1f0be5262d8ce97e798ac1d''',
+]

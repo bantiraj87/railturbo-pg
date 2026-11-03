@@ -1,0 +1,26 @@
+name: "Pull Request Labeler"
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: read
+  pull-requests: write
+  # actions/labeler needs issues: write to CREATE a label that does not exist yet.
+  # Without it the job fails on every pull request, because the `area: *` labels
+  # below are not part of the repository's default label set.
+  issues: write
+
+jobs:
+  label:
+    name: Auto-Label Pull Request
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          sync-labels: true

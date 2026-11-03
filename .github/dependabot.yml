@@ -1,0 +1,61 @@
+# ==============================================================================
+# YOUPI PG V2 - Automated Dependency & Security Updates via GitHub Dependabot
+# Keeps npm packages and GitHub Actions versions secure with grouped PRs
+# ==============================================================================
+version: 2
+updates:
+  # 1. Automated npm dependencies security updates (package.json / package-lock.json)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    groups:
+      # Development tooling, linters, and type definitions
+      development-tooling:
+        dependency-type: "development"
+        patterns:
+          - "typescript*"
+          - "@types/*"
+
+      # Production dependencies: only safe minor and patch updates
+      production-dependencies:
+        dependency-type: "production"
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Ignore breaking major upgrades that exceed active Node 22/24 LTS baseline
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
+
+    labels:
+      - "dependencies"
+      - "security"
+    commit-message:
+      prefix: "chore(deps)"
+
+  # 2. Automated GitHub Actions versions updates (.github/workflows)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      time: "09:00"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 3
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - "ci"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(ci)"

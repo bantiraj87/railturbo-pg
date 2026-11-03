@@ -1,0 +1,42 @@
+{
+  "product": "Mitto Pay",
+  "releaseCandidate": "mitto-pay-rc1",
+  "generatedAt": "2026-10-21T13:48:00.000Z",
+  "commitSha": "9e4763c66c82c8ba246f00b6fa3347428be7be38",
+  "branch": "mitto-pay-main",
+  "artifact": {
+    "filename": "mitto-pay-rc1.tar.gz",
+    "sha256": "c6b9fdd76dfa8962ca4ae2cd7082ff951d41a7de4836209ed7559fbcbecc39f2",
+    "sizeBytes": 2607895
+  },
+  "dependencies": {
+    "lockfile": "package-lock.json",
+    "lockfileSha256": "4d8809f952374c96a17adc86c626733033767d4c582d3d8574f25a930af6e0c3",
+    "declaredNodeEngine": ">=22.5.0",
+    "targetNodeRuntime": "22.23.3"
+  },
+  "vmEnvironment": {
+    "host": "130.210.28.51",
+    "currentDeployedCommit": "560037147b5dcdc3620ee4efa40c5fff2496a418+gate4-gmail-observer",
+    "knownGoodBackup": "/opt/youpi-pg-backup-pre-gate4"
+  },
+  "securityPolicies": {
+    "canaryMode": "FAIL_CLOSED",
+    "verificationPolicy": "REQUIRE_DUAL_CHANNEL",
+    "approvedStagingMerchantUid": "VVANFTTKRA",
+    "vvisaIntegration": {
+      "defaultGateway": "ZOHO",
+      "enableYoupiUpi": false,
+      "pilotAgencyUid": "VVISA-INTERNAL-OPS"
+    }
+  },
+  "verificationSummary": {
+    "regressionSuitesPassed": 41,
+    "regressionSuitesTotal": 41,
+    "concurrencyTestsPassed": 19,
+    "canaryPolicyTestsPassed": 12,
+    "canaryIsolationIntegrationTestsPassed": 9,
+    "syntheticStage3IntegrationTestsPassed": 14,
+    "typecheck": "PASSED"
+  }
+}

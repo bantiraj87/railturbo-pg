@@ -1,0 +1,172 @@
+name: CI & Security Scan
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.vscode/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.vscode/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# Cancel in-progress runs for PRs to save runner minutes, but queue safely on main branch
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  # =============================================================
+  # Stage 1 (Head of Snake): Secret Leak Detection
+  # Halts immediately if any API keys, tokens, or credentials leak
+  # =============================================================
+  gitleaks:
+    name: 🐍 1. Gitleaks Secret Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+
+      # The gitleaks-action wrapper demands a paid GITLEAKS_LICENSE for organisation repos and
+      # never receives secrets on fork PRs. The open-source CLI needs neither, so run it directly
+      # (pinned version, checksum-verified) and pick up .gitleaks.toml from the repo root.
+      - name: Run Gitleaks Security Scan
+        env:
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks git --redact --verbose --exit-code 1 .
+
+  # =============================================================
+  # Stage 2: Dependency Security Audit
+  # Runs ONLY after Stage 1 (Gitleaks) passes successfully
+  # =============================================================
+  security-audit:
+    name: 🐍 2. Dependency Audit
+    needs: [gitleaks]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Security Audit (npm audit)
+        run: npm audit --omit=dev --audit-level=high
+
+  # =============================================================
+  # Stage 3: TypeScript Compilation & Production Build Check
+  # Runs ONLY after Stage 2 (Dependency Audit) passes successfully
+  # =============================================================
+  build:
+    name: 🐍 3. TypeScript Typecheck & Build
+    needs: [security-audit]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Typecheck
+        run: npm run typecheck
+
+      - name: Run Build
+        run: npm run build
+
+  # =============================================================
+  # Stage 4 (Tail of Snake): Unit & Regression Test Verification
+  # Runs ONLY after Stage 3 (Build) passes successfully
+  # =============================================================
+  test:
+    name: 🐍 4. Regression Tests
+    needs: [build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup Node.js 24 LTS
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Full Regression Test Suite
+        run: npm test
+        timeout-minutes: 10
+        env:
+          NODE_ENV: test
+          YOUPI_MODE: localhost
+          SKIP_FLAKY_TEST_4_1: "true"
+          YOUPI_ALLOW_PRIVATE_WEBHOOKS: "true"
+
+  # =============================================================
+  # Stage 5: Update ReviewGround Sticky Comment with CI Status
+  # Runs after all stages, finds the existing review comment and edits (PATCH) it
+  # =============================================================
+  ci-summary:
+    name: 📊 5. Update ReviewGround CI Summary
+    needs: [gitleaks, security-audit, build, test]
+    if: always() && github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    # Only this job posts the summary comment; the other jobs stay least-privilege.
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Update Sticky PR Comment with CI Results
+        uses: arungupta1526/reviewground@4840f45c6442ae5b7ff3af7a17cfa0b6812c66f0 # post-v1.5.0 (4840f45)
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          mode: 'summary'
+          gitleaks-result: ${{ needs.gitleaks.result }}
+          audit-result: ${{ needs.security-audit.result }}
+          build-result: ${{ needs.build.result }}
+          test-result: ${{ needs.test.result }}

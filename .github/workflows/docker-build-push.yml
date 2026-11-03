@@ -1,0 +1,173 @@
+name: 🐳 Docker DevSecOps Build, Scan & Push
+
+on:
+  # Chained Execution: Triggers automatically when the CI pipeline finishes on main
+  workflow_run:
+    workflows: ["CI & Security Scan"]
+    types:
+      - completed
+    branches:
+      - main
+  # Manual trigger support from GitHub Actions UI tab
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  security-events: write
+
+# Prevent duplicate parallel container builds; queue sequentially on main to avoid race conditions
+concurrency:
+  group: docker-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  docker-delivery:
+    name: 🐳 Docker DevSecOps & Registry Push
+    # Only run if CI passed completely, or if manually triggered by developer
+    if: "${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}"
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      # -------------------------------------------------------------
+      # 0. Check for Production Container / Application Changes
+      # Skips expensive Docker build/scan/push if only tests, docs,
+      # workflows, or repository meta files were changed.
+      # -------------------------------------------------------------
+      - name: Check for Production Container Changes
+        id: filter
+        run: |
+          # Verify Dockerfile is present before attempting container build/scan/push.
+          if [ ! -f Dockerfile ]; then
+            echo "::notice::No Dockerfile found in the repository - skipping container build, scan and push."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger via workflow_dispatch - proceeding with build."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if ! git rev-parse HEAD^1 >/dev/null 2>&1; then
+            echo "Single commit / initial ref detected - defaulting to build."
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES=$(git diff --name-only HEAD^1 HEAD -- . \
+            ':!.github/**' \
+            ':!docs/**' \
+            ':!*.md' \
+            ':!.vscode/**' \
+            ':!.gitignore' \
+            ':!LICENSE' \
+            ':!.agents/**' \
+            ':!.gemini/**' \
+            ':!scratch/**' || true)
+
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "✅ Production application changes detected:"
+            echo "$CHANGED_FILES"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "⏭️ No production application changes detected (only tests/docs/workflows/meta files modified)."
+            echo "Skipping Docker build and registry push."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up QEMU (Multi-platform emulation)
+        if: steps.filter.outputs.should_build == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+
+      - name: Set up Docker Buildx
+        if: steps.filter.outputs.should_build == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      # -------------------------------------------------------------
+      # 1. Build Local Image for Security Scan
+      # -------------------------------------------------------------
+      - name: Build Local Image for Security Scan
+        if: steps.filter.outputs.should_build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: youpi-pg:scan-target
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # -------------------------------------------------------------
+      # 2. Automated Aqua Security Trivy Container Scan
+      # -------------------------------------------------------------
+      - name: Run Aqua Security Trivy Scanner
+        if: steps.filter.outputs.should_build == 'true'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: 'youpi-pg:scan-target'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+
+      # -------------------------------------------------------------
+      # 3. Log in to Docker Hub (if secrets configured via env)
+      # -------------------------------------------------------------
+      - name: Log in to Docker Hub
+        if: steps.filter.outputs.should_build == 'true' && env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ env.DOCKERHUB_TOKEN }}
+
+      # -------------------------------------------------------------
+      # 4. Log in to GitHub Container Registry (GHCR)
+      # -------------------------------------------------------------
+      - name: Log in to GitHub Container Registry (GHCR)
+        if: steps.filter.outputs.should_build == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # -------------------------------------------------------------
+      # 5. Generate Registry Tags
+      # -------------------------------------------------------------
+      - name: Extract Docker Metadata
+        if: steps.filter.outputs.should_build == 'true'
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short,prefix=sha-
+            type=semver,pattern={{version}}
+
+      # -------------------------------------------------------------
+      # 6. Push Verified Multi-Platform Image to Registries
+      # -------------------------------------------------------------
+      - name: Push Image to Registries
+        if: steps.filter.outputs.should_build == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

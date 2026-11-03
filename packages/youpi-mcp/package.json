@@ -1,0 +1,17 @@
+{
+  "name": "@youpi/mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol (MCP) server for YouPI PG payment gateway debugging, slot inspection, and transaction simulation",
+  "type": "module",
+  "main": "./src/index.js",
+  "bin": {
+    "youpi-mcp": "./src/index.js"
+  },
+  "scripts": {
+    "start": "node ./src/index.js",
+    "test": "node --test src/__tests__/**/*.test.js"
+  },
+  "dependencies": {
+    "@youpi/common": "*"
+  }
+}
