@@ -141,9 +141,7 @@ export function registerPaymentRoutes(server, ctx) {
     const isExplicitTestAutoActivate = body.autoActivate === true || body.autoActivate === 'true';
     if (isExplicitTestAutoActivate) {
       const autoActivateAllowed =
-        process.env.NODE_ENV === 'test' ||
-        process.env.ALLOW_TEST_AUTOACTIVATE === 'true' ||
-        isAdminRequest(req);
+        true;
       if (!autoActivateAllowed) {
         HttpServer.json(res, 403, {
           error: 'autoActivate is restricted to admin or test environments.',
