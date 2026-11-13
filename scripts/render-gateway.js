@@ -98,11 +98,16 @@ db.execute(`
     plan TEXT,
     order_id TEXT,
     device_id TEXT,
+    device_info TEXT,
     is_redeemed INTEGER DEFAULT 0,
     claimed_by_extension INTEGER DEFAULT 0,
-    created_at TEXT
+    created_at TEXT,
+    activated_at TEXT
   );
 `);
+
+try { db.execute('ALTER TABLE railturbo_keys ADD COLUMN device_info TEXT'); } catch {}
+try { db.execute('ALTER TABLE railturbo_keys ADD COLUMN activated_at TEXT'); } catch {}
 
 // Seed initial orders if empty
 try {
@@ -222,18 +227,22 @@ function rtMarkOrderPaid(orderId, txnId = 'CONFIRMED') {
   return order;
 }
 
-function rtRedeemKey(key, deviceId) {
+function rtRedeemKey(key, deviceId, deviceInfo = null) {
   const row = db.queryOne('SELECT * FROM railturbo_keys WHERE key = ?', [key]);
+  const now = new Date().toISOString();
   if (row) {
     if (row.device_id === deviceId) {
+      if (deviceInfo && !row.device_info) {
+        db.execute('UPDATE railturbo_keys SET device_info = ? WHERE key = ?', [deviceInfo, key]);
+      }
       return { valid: true, plan: row.plan, key };
     }
     if (!row.claimed_by_extension || row.device_id === 'TEST_DEVICE_EXTENSION_1') {
       db.execute(`
         UPDATE railturbo_keys
-        SET device_id = ?, is_redeemed = 1, claimed_by_extension = 1
+        SET device_id = ?, device_info = ?, is_redeemed = 1, claimed_by_extension = 1, activated_at = ?
         WHERE key = ?
-      `, [deviceId, key]);
+      `, [deviceId, deviceInfo || 'Desktop Browser', now, key]);
       return { valid: true, plan: row.plan, key };
     }
     if (row.device_id && row.device_id !== deviceId) {
@@ -241,9 +250,9 @@ function rtRedeemKey(key, deviceId) {
     }
     db.execute(`
       UPDATE railturbo_keys
-      SET device_id = ?, is_redeemed = 1, claimed_by_extension = 1
+      SET device_id = ?, device_info = ?, is_redeemed = 1, claimed_by_extension = 1, activated_at = ?
       WHERE key = ?
-    `, [deviceId, key]);
+    `, [deviceId, deviceInfo || 'Desktop Browser', now, key]);
     return { valid: true, plan: row.plan, key };
   }
 
@@ -251,23 +260,46 @@ function rtRedeemKey(key, deviceId) {
     let plan = '1day';
     if (key.startsWith('TURBO-5P')) plan = '5pack';
     if (key.startsWith('TURBO-1Y')) plan = '1year';
-    const now = new Date().toISOString();
     db.execute(`
-      INSERT OR REPLACE INTO railturbo_keys (key, plan, order_id, device_id, is_redeemed, claimed_by_extension, created_at)
-      VALUES (?, ?, 'OFFLINE', ?, 1, 1, ?)
-    `, [key, plan, deviceId, now]);
+      INSERT OR REPLACE INTO railturbo_keys (key, plan, order_id, device_id, device_info, is_redeemed, claimed_by_extension, created_at, activated_at)
+      VALUES (?, ?, 'OFFLINE', ?, ?, 1, 1, ?, ?)
+    `, [key, plan, deviceId, deviceInfo || 'Desktop Browser', now, now]);
     return { valid: true, plan, key };
   }
 
   return { valid: false, error: 'Invalid License Key!' };
 }
 
+function rtGetAllKeys() {
+  const rows = db.query('SELECT * FROM railturbo_keys ORDER BY created_at DESC');
+  return rows.map(r => ({
+    key: r.key,
+    plan: r.plan,
+    orderId: r.order_id,
+    deviceId: r.device_id,
+    deviceInfo: r.device_info,
+    isRedeemed: Boolean(r.is_redeemed),
+    claimedByExtension: Boolean(r.claimed_by_extension),
+    createdAt: r.created_at,
+    activatedAt: r.activated_at
+  }));
+}
+
+function rtResetKey(key) {
+  db.execute(`
+    UPDATE railturbo_keys
+    SET device_id = NULL, device_info = NULL, is_redeemed = 0, claimed_by_extension = 0, activated_at = NULL
+    WHERE key = ?
+  `, [key]);
+  return true;
+}
+
 function rtGenerateManualKey(plan) {
   const key = makeKey(plan);
   const now = new Date().toISOString();
   db.execute(`
-    INSERT INTO railturbo_keys (key, plan, order_id, device_id, is_redeemed, claimed_by_extension, created_at)
-    VALUES (?, ?, 'MANUAL', NULL, 0, 0, ?)
+    INSERT INTO railturbo_keys (key, plan, order_id, device_id, device_info, is_redeemed, claimed_by_extension, created_at)
+    VALUES (?, ?, 'MANUAL', NULL, NULL, 0, 0, ?)
   `, [key, plan, now]);
   return key;
 }
@@ -411,6 +443,12 @@ const masterServer = http.createServer(async (req, res) => {
       return res.end(JSON.stringify({ success: true, count: orders.length, orders }));
     }
 
+    if (action === 'keys') {
+      const keys = rtGetAllKeys();
+      res.writeHead(200);
+      return res.end(JSON.stringify({ success: true, count: keys.length, keys }));
+    }
+
     if (action === 'order') {
       const orderId = url.searchParams.get('orderId');
       const order = orderId ? rtGetOrder(orderId) : null;
@@ -440,9 +478,15 @@ const masterServer = http.createServer(async (req, res) => {
       }
 
       if (action === 'redeem-key') {
-        const result = rtRedeemKey(body.key, body.deviceId);
+        const result = rtRedeemKey(body.key, body.deviceId, body.deviceInfo);
         res.writeHead(result.valid ? 200 : 400);
         return res.end(JSON.stringify(result));
+      }
+
+      if (action === 'reset-key') {
+        const ok = rtResetKey(body.key);
+        res.writeHead(200);
+        return res.end(JSON.stringify({ success: ok, message: ok ? `Key ${body.key} reset successfully` : 'Key not found' }));
       }
 
       if (action === 'clear-pending') {
